@@ -8,8 +8,8 @@ This repository implements the Weighted-AST retrieval with prompting system for 
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
-cd WeightedAST
+git clone https://github.com/iamsriom/SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting.git
+cd SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting
 
 # Create virtual environment
 python -m venv venv
@@ -82,19 +82,32 @@ WeightedAST/
 └── ...
 ```
 
-### 3. Automated Setup
+### 3. Dataset Organization
 
-Use our setup script to automatically download and organize datasets:
+Organize your datasets in the following directory structure:
 
 ```bash
-python setup_datasets.py
+# Create directory structure
+mkdir -p text2sql-datasets/spider
+mkdir -p text2sql-datasets/sparc  
+mkdir -p text2sql-datasets/cosql/sql_state_tracking
+mkdir -p ast-datasets
+
+# Copy your datasets to the appropriate directories
+# Place Spider train/dev files in text2sql-datasets/spider/
+# Place SParC train/dev files in text2sql-datasets/sparc/
+# Place CoSQL train/dev files in text2sql-datasets/cosql/sql_state_tracking/
 ```
 
-**For S2T variants**, you'll need to manually copy them from the ast-icl repository:
+**For S2T variants**, copy them from the ast-icl repository:
 
 ```bash
-# After cloning ast-icl repository
-cp -r ast-icl/s2t-datasets/* text2sql-datasets/
+# Clone the ast-icl repository to get S2T variants
+git clone https://github.com/aliwister/ast-icl.git
+cd ast-icl
+
+# Copy S2T datasets to your project
+cp -r s2t-datasets/* ../SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting/text2sql-datasets/
 ```
 
 ## 📊 Complete Workflow
@@ -138,14 +151,29 @@ python util/weighted_similarity.py
 python util/prompt.py --model_name mistral --datasets spider sparc cosql
 ```
 
-**Output:** Translations stored in `ast_result2/` directory.
+**Output:** Translations stored in `ast_result/` directory.
 
-### Step 5: Evaluate Results
+### Step 5: Complete the Loop with REDSQL_VLDB
+
+To complete the evaluation loop by translating the generated natural language back to SQL, we use the REDSQL_VLDB codebase:
 
 ```bash
-# Evaluate using exact match and execution accuracy
-python evaluation.py
+# Clone the REDSQL_VLDB repository
+git clone https://github.com/your-repo/REDSQL_VLDB-main.git
+cd REDSQL_VLDB-main
+
+# Set up REDSQL environment
+pip install -r requirements.txt
+
+# Use the generated translations from ast_result/ directory
+# Feed them into REDSQL to get SQL queries back
+python redsql_main.py --input_dir ../SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting/ast_result/ --output_dir redsql_output/
+
+# Evaluate the round-trip results
+python evaluate_roundtrip.py --original_sql_dir ../text2sql-datasets/ --generated_sql_dir redsql_output/
 ```
+
+This completes the full pipeline: SQL → Natural Language → SQL, allowing us to measure both Exact Match (EM) and Execution Accuracy (EX) for the complete round-trip translation.
 
 ## 🔧 Complete Pipeline Execution
 
@@ -167,69 +195,13 @@ WeightedAST/
 ├── ast-datasets/                # AST-converted datasets (empty initially)
 ├── learned-weights/             # Learned feature weights
 ├── similar_queries_results_v2/  # Retrieved similar examples
-├── ast_result2/                # Generated translations
+├── ast_result/                 # Generated translations
 ├── requirements.txt             # Python dependencies
 ├── setup_datasets.py           # Automated dataset setup
 ├── run_experiments.py          # Complete pipeline execution
 └── evaluation.py               # Evaluation metrics
 ```
 
-## 🧠 Methodology
-
-### Feature Extraction
-Our approach extracts two categories of features:
-
-1. **SQL Surface Features**: Keywords, aggregation functions, table names
-2. **AST-based Structural Features**: 
-   - Node-type features (TYPE:Statement, TYPE:Identifier)
-   - Keyword features within syntactic context
-   - Function features (FUNCTION:AVG, FUNCTION:COUNT)
-   - Identifier features (IDENTIFIER:singer, IDENTIFIER:age)
-   - Depth features capturing hierarchical structure
-
-### Feature Weighting
-Weights combine two complementary signals:
-
-```
-w(f) = α·IDF(f) + (1-α)·Attn(f)
-```
-
-- **IDF**: Global informativeness (down-weights common elements like SELECT, FROM)
-- **Attention**: Query-specific contextual relevance (learned via self-supervised model)
-- **α = 0.5**: Balances global and local importance
-
-### Similarity Computation
-Weighted similarity between queries:
-
-```
-S(Qt,Qi) = Σ w(f)·min(cQt(f),cQi(f)) / Σ w(f)
-```
-
-### Few-Shot Prompting
-- Retrieves top-k=5 most similar training examples
-- Uses chain-of-thought prompting with structured guidelines
-- Generates natural language descriptions with semantic fidelity
-
-## 📈 Evaluation
-
-### Metrics
-- **Exact Match (EM)**: Syntactic equivalence between generated and reference SQL
-- **Execution Accuracy (EX)**: Whether queries yield identical results
-- **Human Evaluation**: Expert assessment of semantic correctness
-
-### Results
-Our method outperforms Graph-AST ICL baseline:
-- **Spider-S2T**: Up to 91.97% accuracy (vs 73.72% baseline)
-- **SParC-S2T**: Up to 65.7% accuracy (vs 56.1% baseline)  
-- **CoSQL-S2T**: Up to 74.5% accuracy (vs 21.4% baseline)
-
-## 🔑 Key Files
-
-- **`util/feature_importance.py`**: Core feature extraction and weight learning
-- **`util/weighted_similarity.py`**: Similarity computation and retrieval
-- **`util/prompt.py`**: LLM translation with few-shot prompting
-- **`evaluation.py`**: Comprehensive evaluation metrics
-- **`run_experiments.py`**: Complete pipeline execution
 
 ## 📋 Requirements
 
@@ -238,17 +210,6 @@ Our method outperforms Graph-AST ICL baseline:
 - Transformers 4.20+
 - SQLite3
 - CUDA (optional, for GPU acceleration)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 📚 Citation
 
@@ -262,28 +223,3 @@ If you use this code in your research, please cite our paper:
   year={2024}
 }
 ```
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-1. **CUDA Out of Memory**: Use CPU mode by setting `CUDA_VISIBLE_DEVICES=""`
-2. **Dataset Not Found**: Ensure datasets are in correct directory structure
-3. **Permission Denied**: Check file permissions and virtual environment activation
-
-### Getting Help
-
-- Check the [Issues](https://github.com/your-repo/issues) page
-- Review the [GITHUB_UPLOAD_GUIDE.md](GITHUB_UPLOAD_GUIDE.md) for detailed setup instructions
-- Contact the authors for research-related questions
-
-## 🔄 Workflow Summary
-
-1. **Setup**: Download datasets and install dependencies
-2. **Convert**: Transform SQL queries to AST features  
-3. **Learn**: Train feature importance weights
-4. **Retrieve**: Find similar examples using weighted similarity
-5. **Translate**: Generate natural language descriptions
-6. **Evaluate**: Assess quality using multiple metrics
-
-This complete pipeline enables reproducible research and easy experimentation with the Weighted-AST methodology for SQL-to-Text generation.
