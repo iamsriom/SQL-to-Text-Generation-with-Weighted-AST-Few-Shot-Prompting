@@ -153,25 +153,92 @@ python util/prompt.py --model_name mistral --datasets spider sparc cosql
 
 **Output:** Translations stored in `ast_result/` directory.
 
-### Step 5: Complete the Loop with REDSQL_VLDB
+### Step 5: Complete the Loop with REDSQL
 
-To complete the evaluation loop by translating the generated natural language back to SQL, we use the REDSQL_VLDB codebase:
+To complete the evaluation loop by translating the generated natural language back to SQL, we use the [REDSQL_VLDB repository](https://github.com/httdty/REDSQL_VLDB):
+
+#### 5.1 Setup REDSQL Environment
 
 ```bash
-# Clone the REDSQL_VLDB repository
-git clone https://github.com/your-repo/REDSQL_VLDB-main.git
-cd REDSQL_VLDB-main
+# Clone the REDSQL repository
+git clone https://github.com/httdty/REDSQL_VLDB.git
+cd REDSQL_VLDB
 
-# Set up REDSQL environment
+# Install system requirements
+sudo apt-get update
+sudo apt-get install -y openjdk-11-jdk
+
+# Create conda environment
+conda create -n red python=3.9
+conda activate red
+
+# Install dependencies
+conda install pytorch==1.12.0 torchvision==0.13.0 torchaudio==0.12.0 cudatoolkit=11.3 -c pytorch
+conda install -c conda-forge nmslib
 pip install -r requirements.txt
 
-# Use the generated translations from ast_result/ directory
-# Feed them into REDSQL to get SQL queries back
-python redsql_main.py --input_dir ../SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting/ast_result/ --output_dir redsql_output/
-
-# Evaluate the round-trip results
-python evaluate_roundtrip.py --original_sql_dir ../text2sql-datasets/ --generated_sql_dir redsql_output/
+# Create output directories
+mkdir output logs
 ```
+
+#### 5.2 Prepare Your Generated Translations
+
+Convert your generated translations from `ast_result/` to REDSQL format:
+
+```bash
+# Convert your Weighted-AST translations to REDSQL input format
+python convert_translations_for_redsql.py \
+    --input_dir ../SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting/ast_result/ \
+    --output_file ./datasets/spider/dev.json \
+    --dataset spider
+```
+
+#### 5.3 Build Content Index (REDSQL's Key Innovation)
+
+```bash
+# Build searchable index of database content for value matching
+python -m pre_processing.build_contents_index \
+    --output_dir=./index/spider/db_contents_index/ \
+    --db_dir=./datasets/spider/database/
+```
+
+#### 5.4 Run REDSQL for SQL Generation
+
+```bash
+# Run REDSQL to convert natural language back to SQL
+python -m main.run \
+    --model_name=gpt-4o-2024-08-06 \
+    --batch_size=2 \
+    --exp_name=weighted_ast_redsql \
+    --bug_fix \
+    --consistency_num=30 \
+    --stage=dev \
+    --db_content_index_path=./index/spider/db_contents_index/ \
+    --annotation=./datasets/spider/dev_annotation.json \
+    --output_dir=./output \
+    --dev_file=./datasets/spider/dev.json \
+    --table_file=./datasets/spider/dev_tables.json \
+    --db_dir=./datasets/spider/database
+```
+
+#### 5.5 Evaluate Results (EM and EX)
+
+```bash
+# Evaluate Exact Match (EM) and Execution Accuracy (EX)
+python -m eval.evaluate \
+    --gold_file=./datasets/spider/dev_gold.sql \
+    --pred_file=./output/predicted_sql.txt \
+    --db_dir=./datasets/spider/database \
+    --output_file=./output/evaluation_results.json
+```
+
+**REDSQL Key Features:**
+- **Content Retrieval**: Uses Lucene search to find relevant database values
+- **Value Matching**: Matches natural language to actual database content  
+- **Schema Analysis**: Comprehensive table structures with PKs/FKs
+- **LLM Integration**: Real API calls for SQL generation
+- **Bug Fixing**: Automatic SQL error correction
+- **Consistency Checking**: Multiple validation passes
 
 This completes the full pipeline: SQL → Natural Language → SQL, allowing us to measure both Exact Match (EM) and Execution Accuracy (EX) for the complete round-trip translation.
 
@@ -186,7 +253,7 @@ python run_experiments.py --datasets spider sparc cosql --models mistral code-ll
 ## 📁 Directory Structure
 
 ```
-WeightedAST/
+SQL-to-Text-Generation-with-Weighted-AST-Few-Shot-Prompting/
 ├── util/
 │   ├── feature_importance.py    # AST feature extraction and weight learning
 │   ├── weighted_similarity.py   # Similarity computation and retrieval
@@ -197,7 +264,6 @@ WeightedAST/
 ├── similar_queries_results_v2/  # Retrieved similar examples
 ├── ast_result/                 # Generated translations
 ├── requirements.txt             # Python dependencies
-├── setup_datasets.py           # Automated dataset setup
 ├── run_experiments.py          # Complete pipeline execution
 └── evaluation.py               # Evaluation metrics
 ```
@@ -211,15 +277,3 @@ WeightedAST/
 - SQLite3
 - CUDA (optional, for GPU acceleration)
 
-## 📚 Citation
-
-If you use this code in your research, please cite our paper:
-
-```bibtex
-@article{chakrabarti2024weighted,
-  title={SQL-to-Text Generation with Weighted-AST Few-Shot Prompting},
-  author={Chakrabarti, Sriom and Ma, Chuangtao and Khan, Arijit and Link, Sebastian},
-  journal={Proceedings of the VLDB Endowment},
-  year={2024}
-}
-```
