@@ -245,6 +245,77 @@ def find_top_similar_queries_from_train_v2(target_query: str, train_queries: Lis
     
     return top_results
 
+def find_top_similar_queries_with_query_attention(target_query: str, 
+                                                train_queries: List[Tuple[str, str]], 
+                                                idf_weights: Dict[str, float],
+                                                attention_analyzer=None,
+                                                top_k: int = 10,
+                                                alpha: float = 0.5) -> List[Tuple[float, str, str, int]]:
+    """
+    Find top-k similar queries using query-specific attention mechanism.
+    
+    This implements the paper's key innovation: attention weights are computed
+    specifically for the target query, not globally averaged.
+    
+    Args:
+        target_query: The query to find similar examples for
+        train_queries: List of (query, translation) tuples from training set
+        idf_weights: Global IDF weights for features
+        attention_analyzer: Query-specific attention analyzer
+        top_k: Number of top similar queries to return
+        alpha: Balance between IDF and attention (0.5 = equal weight)
+    
+    Returns:
+        List of (similarity_score, query, translation, query_index) tuples
+    """
+    import heapq
+    
+    # Initialize attention analyzer if not provided
+    if attention_analyzer is None:
+        try:
+            from .query_specific_attention import QuerySpecificAttentionAnalyzer
+            attention_analyzer = QuerySpecificAttentionAnalyzer(
+                model_path="learned-weights/spider_model.pth",
+                vocab_path="learned-weights/spider_feature_importance_v2.json"
+            )
+        except Exception as e:
+            print(f"Warning: Could not initialize query-specific attention: {e}")
+            print("Falling back to global weights...")
+            return find_top_similar_queries_from_train_v2(
+                target_query, train_queries, idf_weights, top_k
+            )
+    
+    heap = []
+    seen_queries = set()
+    
+    for idx, (query, translation) in enumerate(train_queries):
+        if query in seen_queries:
+            continue
+        
+        # Compute similarity using query-specific attention
+        similarity = compute_ast_similarity_with_query_attention(
+            target_query, query, idf_weights, attention_analyzer, alpha
+        )
+        
+        # Use min-heap for top-k selection
+        if len(heap) < top_k:
+            heapq.heappush(heap, (similarity, idx, query, translation))
+        elif similarity > heap[0][0]:
+            heapq.heapreplace(heap, (similarity, idx, query, translation))
+        
+        seen_queries.add(query)
+    
+    # Extract and sort results
+    top_results = []
+    while heap:
+        similarity, idx, query, translation = heapq.heappop(heap)
+        top_results.append((similarity, query, translation, idx))
+    
+    # Sort by similarity descending
+    top_results.sort(key=lambda x: x[0], reverse=True)
+    
+    return top_results
+
 def process_dev_dataset_v2(dataset_name: str, dev_path: str, train_path: str, weights_file: str, output_dir: str):
     """
     Process a dev dataset to find top similar queries from train dataset for each dev query.
@@ -362,6 +433,37 @@ def compute_ast_similarity_v2(query1: str, query2: str, feature_weights: Dict[st
     except Exception as e:
         print(f"Error computing AST similarity: {e}")
         return 0.0
+
+def compute_ast_similarity_with_query_attention(query1: str, query2: str, 
+                                              idf_weights: Dict[str, float],
+                                              attention_analyzer=None,
+                                              alpha: float = 0.5) -> float:
+    """
+    Compute similarity using query-specific attention mechanism as described in the paper.
+    
+    This implements the key innovation: w(f|Q) = α·IDF(f) + (1-α)·Attn(f|Q)
+    where Attn(f|Q) is computed per query, not globally averaged.
+    """
+    try:
+        from .query_specific_attention import QuerySpecificAttentionAnalyzer
+        
+        # Initialize analyzer if not provided
+        if attention_analyzer is None:
+            attention_analyzer = QuerySpecificAttentionAnalyzer(
+                model_path="learned-weights/spider_model.pth",
+                vocab_path="learned-weights/spider_feature_importance_v2.json"
+            )
+        
+        # Use query-specific attention for similarity computation
+        similarity = attention_analyzer.compute_weighted_similarity_with_query_attention(
+            query1, query2, idf_weights, alpha
+        )
+        
+        return round(similarity, 3)
+    except Exception as e:
+        print(f"Error computing query-specific attention similarity: {e}")
+        # Fallback to global weights
+        return compute_ast_similarity_v2(query1, query2, idf_weights)
 
 def extract_ast_features_v2(parsed_query) -> Dict[str, int]:
     """
