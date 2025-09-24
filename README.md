@@ -1,6 +1,17 @@
 # Weighted-AST SQL-to-Text Generation
 
-This repository implements the Weighted-AST retrieval with prompting system for SQL-to-Text generation, as described in our research paper. The system uses Abstract Syntax Tree (AST) features with learned weights to retrieve semantically relevant examples for few-shot prompting, enabling accurate natural language descriptions of SQL queries.
+This repository implements the Weighted-AST retrieval with prompting system for SQL-to-Text generation, as described in our research paper **"SQL-to-Text Generation with Weighted-AST Few-Shot Prompting"**.
+
+## Authors
+
+- **Sriom Chakrabarti** - Aalborg University, Denmark (scha@cs.aau.dk)
+- **Chuangtao Ma** - Aalborg University, Denmark (chuma@cs.aau.dk)  
+- **Arijit Khan** - Bowling Green State University, USA (arijitk@bgsu.edu)
+- **Sebastian Link** - University of Auckland, New Zealand (s.link@auckland.ac.nz)
+
+## Abstract
+
+The system uses Abstract Syntax Tree (AST) features with learned weights to retrieve semantically relevant examples for few-shot prompting, enabling accurate natural language descriptions of SQL queries.
 
 ## 🚀 Quick Start
 
