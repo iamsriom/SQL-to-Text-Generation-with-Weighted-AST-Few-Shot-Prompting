@@ -205,8 +205,13 @@ class QuerySpecificAttentionAnalyzer:
         """
         Compute similarity using query-specific attention as described in the paper.
         
-        Formula: w(f|Q) = α·IDF(f) + (1-α)·Attn(f|Q)
-        where Attn(f|Q) is computed per query, not globally.
+        Implements the weighted similarity formula:
+        S(Q_t,Q_i) = Σ w(f|Q_t) · min(c_{Q_t}(f), c_{Q_i}(f)) / Σ w(f|Q_t)
+        
+        Where:
+        - w(f|Q_t) = α·IDF(f) + (1-α)·Attn(f|Q_t) (query-specific weights)
+        - Attn(f|Q_t) is computed specifically for target query Q_t
+        - F = supp(Q_t) ∪ supp(Q_i) (union of features from both queries)
         """
         try:
             # Extract features from both queries
@@ -216,7 +221,7 @@ class QuerySpecificAttentionAnalyzer:
             if not features1 or not features2:
                 return 0.0
             
-            # Compute query-specific attention for query1 (target query)
+            # Compute query-specific attention for query1 (target query Q_t)
             attention_weights_q1 = self.compute_query_specific_attention(query1)
             
             # If attention computation failed, fall back to IDF-only
@@ -224,7 +229,7 @@ class QuerySpecificAttentionAnalyzer:
                 print("Warning: Query-specific attention failed, using IDF-only weights")
                 attention_weights_q1 = {feature: 1.0 for feature in features1.keys()}
             
-            # Get union of features
+            # Get union of features: F = supp(Q_t) ∪ supp(Q_i)
             all_features = set(features1.keys()) | set(features2.keys())
             
             if not all_features:
@@ -234,19 +239,19 @@ class QuerySpecificAttentionAnalyzer:
             total_weight = 0.0
             
             for feature in all_features:
-                count1 = features1.get(feature, 0)
-                count2 = features2.get(feature, 0)
+                count1 = features1.get(feature, 0)  # c_{Q_t}(f)
+                count2 = features2.get(feature, 0)  # c_{Q_i}(f)
                 
-                # Intersection count
+                # Intersection count: min(c_{Q_t}(f), c_{Q_i}(f))
                 intersection = min(count1, count2)
                 
                 # Get IDF weight (global)
                 idf_weight = idf_weights.get(feature, 0.0)
                 
-                # Get query-specific attention weight
+                # Get query-specific attention weight: Attn(f|Q_t)
                 attention_weight = attention_weights_q1.get(feature, 0.0)
                 
-                # Combine weights as per paper: w(f|Q) = α·IDF(f) + (1-α)·Attn(f|Q)
+                # Combine weights: w(f|Q_t) = α·IDF(f) + (1-α)·Attn(f|Q_t)
                 combined_weight = alpha * idf_weight + (1 - alpha) * attention_weight
                 
                 # Ensure weight is valid (not NaN)
