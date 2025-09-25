@@ -698,3 +698,62 @@ class FeatureImportanceAnalyzer:
         plt.close()
         
         print(f"Saved detailed visualization to {detailed_plot_path}")
+
+def main():
+    """Main entry point for training global feature importance."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Train global feature importance model')
+    parser.add_argument('--dataset', type=str, required=True, 
+                       choices=['spider', 'sparc', 'cosql'],
+                       help='Dataset to train on')
+    parser.add_argument('--mode', type=str, required=True,
+                       choices=['train', 'analyze'],
+                       help='Mode: train or analyze')
+    parser.add_argument('--data_path', type=str, default='datasets',
+                       help='Path to datasets directory')
+    parser.add_argument('--epochs', type=int, default=5,
+                       help='Number of training epochs')
+    
+    args = parser.parse_args()
+    
+    # Load dataset
+    dataset_path = os.path.join(args.data_path, args.dataset)
+    train_file = os.path.join(dataset_path, f"train_{args.dataset}.json")
+    
+    if not os.path.exists(train_file):
+        print(f"Training file not found: {train_file}")
+        return
+    
+    # Load queries
+    queries = load_all_queries(train_file, args.dataset)
+    print(f"Loaded {len(queries)} training queries from {args.dataset}")
+    
+    # Initialize analyzer
+    analyzer = FeatureImportanceAnalyzer()
+    
+    if args.mode == 'train':
+        print("Training global feature importance model...")
+        result = analyzer.analyze_importance(queries)
+        
+        # Save weights
+        weights_data = analyzer.save_weights(args.dataset)
+        
+        print(f"Training completed!")
+        print(f"Features analyzed: {len(weights_data['combined_scores'])}")
+        print(f"Weights saved to: learned-weights/{args.dataset}_feature_importance_v2.json")
+        
+        # Create visualizations
+        analyzer.visualize_importance()
+        
+    elif args.mode == 'analyze':
+        print("Analyzing feature importance...")
+        result = analyzer.analyze_importance(queries)
+        
+        print("Top 10 most important features:")
+        sorted_features = sorted(result['combined'].items(), key=lambda x: x[1], reverse=True)[:10]
+        for feature, score in sorted_features:
+            print(f"  {feature}: {score:.3f}")
+
+if __name__ == "__main__":
+    main()

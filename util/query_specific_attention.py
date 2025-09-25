@@ -312,34 +312,90 @@ def find_top_similar_queries_with_query_attention(target_query: str,
     
     return top_results
 
-# Example usage
+def main():
+    """Main entry point for query-specific attention workflow."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Query-specific attention mechanism')
+    parser.add_argument('--dataset', type=str, default='spider',
+                       choices=['spider', 'sparc', 'cosql'],
+                       help='Dataset to use')
+    parser.add_argument('--mode', type=str, default='demo',
+                       choices=['demo', 'train', 'test'],
+                       help='Mode: demo, train, or test')
+    parser.add_argument('--data_path', type=str, default='datasets',
+                       help='Path to datasets directory')
+    
+    args = parser.parse_args()
+    
+    # Check if global weights exist
+    global_weights_file = f"learned-weights/{args.dataset}_feature_importance_v2.json"
+    if not Path(global_weights_file).exists():
+        print(f"❌ Global weights not found: {global_weights_file}")
+        print("Please run Stage 1 first:")
+        print(f"python util/feature_importance.py --dataset {args.dataset} --mode train")
+        return
+    
+    print(f"✅ Found global weights: {global_weights_file}")
+    
+    if args.mode == 'demo':
+        # Demo mode: Show query-specific attention in action
+        print("\n🚀 DEMO: Query-Specific Attention Mechanism")
+        print("="*60)
+        
+        # Load global weights
+        with open(global_weights_file, 'r') as f:
+            weights_data = json.load(f)
+            idf_weights = weights_data.get('idf_scores', {})
+        
+        # Initialize analyzer (will use global model for query-specific attention)
+        analyzer = QuerySpecificAttentionAnalyzer(
+            model_path=f"learned-weights/{args.dataset}_model.pth",
+            vocab_path=global_weights_file
+        )
+        
+        # Demo queries
+        target_query = "SELECT COUNT(*) FROM singer WHERE age > 25 GROUP BY country"
+        train_queries = [
+            ("SELECT COUNT(*) FROM singer WHERE age > 30", "Count singers over 30"),
+            ("SELECT AVG(age) FROM singer WHERE country = 'USA'", "Average age of US singers"),
+            ("SELECT name FROM singer WHERE age > 25", "Names of singers over 25"),
+            ("SELECT * FROM singer GROUP BY country", "All singers grouped by country"),
+            ("SELECT COUNT(*) FROM album WHERE year > 2000", "Count albums after 2000")
+        ]
+        
+        print(f"Target Query: {target_query}")
+        print(f"Training Queries: {len(train_queries)}")
+        print()
+        
+        # Find similar queries using query-specific attention
+        similar_queries = find_top_similar_queries_with_query_attention(
+            target_query, train_queries, idf_weights, analyzer, top_k=3
+        )
+        
+        print("🎯 Query-Specific Attention Results:")
+        for i, (sim_score, query, translation, idx) in enumerate(similar_queries, 1):
+            print(f"{i}. Similarity: {sim_score:.3f}")
+            print(f"   Query: {query}")
+            print(f"   Translation: {translation}")
+            print()
+        
+        # Show query-specific attention weights
+        print("🔍 Query-Specific Attention Weights (top 5):")
+        attention_weights = analyzer.compute_query_specific_attention(target_query)
+        for feature, weight in sorted(attention_weights.items(), key=lambda x: x[1], reverse=True)[:5]:
+            print(f"  {feature}: {weight:.3f}")
+    
+    elif args.mode == 'train':
+        print("Training query-specific attention model...")
+        # This would train a separate model for query-specific attention
+        # For now, we use the global model as foundation
+        print("Using global model as foundation for query-specific attention.")
+    
+    elif args.mode == 'test':
+        print("Testing query-specific attention mechanism...")
+        # Add comprehensive testing here
+        print("Test mode not implemented yet.")
+
 if __name__ == "__main__":
-    # Initialize the query-specific attention analyzer
-    analyzer = QuerySpecificAttentionAnalyzer(
-        model_path="learned-weights/spider_model.pth",
-        vocab_path="learned-weights/spider_feature_importance_v2.json"
-    )
-    
-    # Load IDF weights
-    with open("learned-weights/spider_feature_importance_v2.json", 'r') as f:
-        weights_data = json.load(f)
-        idf_weights = weights_data.get('idf_scores', {})
-    
-    # Example target query
-    target_query = "SELECT COUNT(*) FROM singer WHERE age > 25"
-    
-    # Example training queries
-    train_queries = [
-        ("SELECT name FROM singer", "Show singer names"),
-        ("SELECT AVG(age) FROM singer WHERE country = 'USA'", "Average age of US singers"),
-        ("SELECT * FROM singer WHERE age > 30", "All singers over 30")
-    ]
-    
-    # Find similar queries using query-specific attention
-    similar_queries = find_top_similar_queries_with_query_attention(
-        target_query, train_queries, idf_weights, analyzer, top_k=5
-    )
-    
-    print("Query-specific attention results:")
-    for sim_score, query, translation, idx in similar_queries:
-        print(f"Similarity: {sim_score:.3f}, Query: {query}")
+    main()
